@@ -37,4 +37,5 @@ sudo pacman -S v4l2loopback-dkms v4l-utils ffmpeg
 git clone https://github.com/muzammilshafique/VirtualCamera.git
 cd VirtualCamera/
 cmake CMakeLists.txt
-make```
+make
+```
