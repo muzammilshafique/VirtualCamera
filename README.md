@@ -39,3 +39,7 @@ cd VirtualCamera/
 cmake CMakeLists.txt
 make
 ```
+
+## Screenshot
+
+<img width="452" height="399" alt="Screenshot_20250908_064019" src="https://github.com/user-attachments/assets/fec0ba5f-c7a2-4c94-94a9-07d4430971c4" />
