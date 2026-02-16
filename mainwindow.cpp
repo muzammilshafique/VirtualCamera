@@ -1,15 +1,18 @@
 #include "mainwindow.h"
 #include "./ui_mainwindow.h"
+
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QMessageBox>
 #include <QRegularExpression>
+#include <QTimer>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
     , ffmpegProcess(new QProcess(this))
     , isImage(false)
-    , wasRunningBeforeFileChange(false)
+    , pendingRestart(false)
 {
     ui->setupUi(this);
     updateStatus("Idle", "gray");
@@ -18,14 +21,25 @@ MainWindow::MainWindow(QWidget *parent)
     this->setWindowIcon(QIcon(":/resources/icon.svg"));
 
     connect(ffmpegProcess, &QProcess::started, [this]() {
+        ui->btn_start->setText("Stop Virtual Camera");
         updateStatus("Streaming...", "green");
     });
+
     connect(ffmpegProcess, &QProcess::finished, [this]() {
+        if (pendingRestart) {
+            pendingRestart = false;
+            QTimer::singleShot(150, this, [this]() {
+                startStreaming();
+            });
+            return;
+        }
+
+        ui->btn_start->setText("Start Virtual Camera");
         updateStatus("Stopped", "red");
     });
+
     updateModuleButton();
 }
-
 
 MainWindow::~MainWindow()
 {
@@ -36,7 +50,6 @@ MainWindow::~MainWindow()
     delete ui;
 }
 
-// Select image or video
 void MainWindow::on_btn_select_file_clicked()
 {
     const QString filters = "Media Files (*.png *.jpg *.jpeg *.mp4 *.mkv *.avi);;Images (*.png *.jpg *.jpeg);;Videos (*.mp4 *.mkv *.avi)";
@@ -46,7 +59,7 @@ void MainWindow::on_btn_select_file_clicked()
         return;
     }
 
-    QString extension = QFileInfo(file).suffix().toLower();
+    const QString extension = QFileInfo(file).suffix().toLower();
     const QStringList imageExtensions = {"png", "jpg", "jpeg"};
 
     selectedFile = file;
@@ -59,16 +72,26 @@ void MainWindow::on_btn_select_file_clicked()
 void MainWindow::on_btn_start_clicked()
 {
     if (ffmpegProcess->state() == QProcess::Running) {
-        // 🔴 Stop ffmpeg
-        ffmpegProcess->kill();
-        ffmpegProcess->waitForFinished();
-        ui->btn_start->setText("Start");
-        updateStatus("Stopped", "red");
-        wasRunningBeforeFileChange = false;
+        pendingRestart = false;
+        stopStreaming();
         return;
     }
 
-    // 🟢 Start ffmpeg
+    startStreaming();
+}
+
+void MainWindow::restartStreamingIfNeeded()
+{
+    if (ffmpegProcess->state() != QProcess::Running) {
+        return;
+    }
+
+    pendingRestart = true;
+    stopStreaming(true);
+}
+
+void MainWindow::startStreaming()
+{
     if (selectedFile.isEmpty()) {
         QMessageBox::warning(this, "No file selected", "Please select an image or video file first.");
         return;
@@ -87,17 +110,31 @@ void MainWindow::on_btn_start_clicked()
 
     ffmpegProcess->start("ffmpeg", arguments);
 
-    if (ffmpegProcess->waitForStarted(2000)) {
-        ui->btn_start->setText("Stop");
-        updateStatus(wasRunningBeforeFileChange ? "Streaming restarted" : "Streaming...", "green");
-        wasRunningBeforeFileChange = false;
-    } else {
+    if (!ffmpegProcess->waitForStarted(3000)) {
+        pendingRestart = false;
+        ui->btn_start->setText("Start Virtual Camera");
         QMessageBox::critical(this, "Error", "Failed to start ffmpeg.");
         updateStatus("Error", "red");
         wasRunningBeforeFileChange = false;
     }
 }
 
+void MainWindow::stopStreaming(bool forRestart)
+{
+    if (ffmpegProcess->state() != QProcess::Running) {
+        return;
+    }
+
+    if (forRestart) {
+        updateStatus("Applying new file...", "darkorange");
+    }
+
+    ffmpegProcess->terminate();
+    if (!ffmpegProcess->waitForFinished(1000)) {
+        ffmpegProcess->kill();
+        ffmpegProcess->waitForFinished();
+    }
+}
 
 
 void MainWindow::restartStreamingIfNeeded()
@@ -143,7 +180,6 @@ void MainWindow::on_btn_load_module_clicked()
     }
 }
 
-
 void MainWindow::updateModuleButton()
 {
     if (isModuleLoaded("v4l2loopback")) {
@@ -155,7 +191,6 @@ void MainWindow::updateModuleButton()
     }
 }
 
-
 bool MainWindow::isModuleLoaded(const QString &moduleName)
 {
     QProcess process;
@@ -165,4 +200,3 @@ bool MainWindow::isModuleLoaded(const QString &moduleName)
 
     return output.contains(QRegularExpression("^" + moduleName + "\\b", QRegularExpression::MultilineOption));
 }
-
