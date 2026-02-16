@@ -1,0 +1,22 @@
+# Build directories
+build/
+cmake-build-*/
+.qtcreator/
+*.user
+
+# Qt Creator specific
+*.pro.user
+*.qbs.user
+*.qmlproject.user
+*.autosave
+
+# CMake cache
+CMakeCache.txt
+CMakeFiles/
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
