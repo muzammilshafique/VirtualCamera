@@ -115,6 +115,7 @@ void MainWindow::startStreaming()
         ui->btn_start->setText("Start Virtual Camera");
         QMessageBox::critical(this, "Error", "Failed to start ffmpeg.");
         updateStatus("Error", "red");
+        wasRunningBeforeFileChange = false;
     }
 }
 
@@ -133,6 +134,22 @@ void MainWindow::stopStreaming(bool forRestart)
         ffmpegProcess->kill();
         ffmpegProcess->waitForFinished();
     }
+}
+
+
+void MainWindow::restartStreamingIfNeeded()
+{
+    if (ffmpegProcess->state() != QProcess::Running) {
+        return;
+    }
+
+    ffmpegProcess->kill();
+    ffmpegProcess->waitForFinished();
+    ui->btn_start->setText("Start");
+    updateStatus("Restarting stream...", "darkorange");
+
+    wasRunningBeforeFileChange = true;
+    on_btn_start_clicked();
 }
 
 void MainWindow::updateStatus(const QString &text, const QString &color)
