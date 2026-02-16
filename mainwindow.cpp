@@ -9,6 +9,7 @@ MainWindow::MainWindow(QWidget *parent)
     , ui(new Ui::MainWindow)
     , ffmpegProcess(new QProcess(this))
     , isImage(false)
+    , wasRunningBeforeFileChange(false)
 {
     ui->setupUi(this);
     updateStatus("Idle", "gray");
@@ -35,26 +36,24 @@ MainWindow::~MainWindow()
     delete ui;
 }
 
-// Select image
-void MainWindow::on_btn_select_image_clicked()
+// Select image or video
+void MainWindow::on_btn_select_file_clicked()
 {
-    QString file = QFileDialog::getOpenFileName(this, "Select Image", "", "Images (*.png *.jpg *.jpeg)");
-    if (!file.isEmpty()) {
-        selectedFile = file;
-        isImage = true;
-        ui->lbl_file->setText("Selected: " + QFileInfo(file).fileName());
-    }
-}
+    const QString filters = "Media Files (*.png *.jpg *.jpeg *.mp4 *.mkv *.avi);;Images (*.png *.jpg *.jpeg);;Videos (*.mp4 *.mkv *.avi)";
+    QString file = QFileDialog::getOpenFileName(this, "Select Image or Video", "", filters);
 
-// Select video
-void MainWindow::on_btn_select_video_clicked()
-{
-    QString file = QFileDialog::getOpenFileName(this, "Select Video", "", "Videos (*.mp4 *.mkv *.avi)");
-    if (!file.isEmpty()) {
-        selectedFile = file;
-        isImage = false;
-        ui->lbl_file->setText("Selected: " + QFileInfo(file).fileName());
+    if (file.isEmpty()) {
+        return;
     }
+
+    QString extension = QFileInfo(file).suffix().toLower();
+    const QStringList imageExtensions = {"png", "jpg", "jpeg"};
+
+    selectedFile = file;
+    isImage = imageExtensions.contains(extension);
+    ui->lbl_file->setText("Selected file: " + QFileInfo(file).fileName());
+
+    restartStreamingIfNeeded();
 }
 
 void MainWindow::on_btn_start_clicked()
@@ -65,12 +64,13 @@ void MainWindow::on_btn_start_clicked()
         ffmpegProcess->waitForFinished();
         ui->btn_start->setText("Start");
         updateStatus("Stopped", "red");
+        wasRunningBeforeFileChange = false;
         return;
     }
 
     // 🟢 Start ffmpeg
     if (selectedFile.isEmpty()) {
-        QMessageBox::warning(this, "No file selected", "Please select an image or video first.");
+        QMessageBox::warning(this, "No file selected", "Please select an image or video file first.");
         return;
     }
 
@@ -89,13 +89,31 @@ void MainWindow::on_btn_start_clicked()
 
     if (ffmpegProcess->waitForStarted(2000)) {
         ui->btn_start->setText("Stop");
-        updateStatus("Streaming...", "green");
+        updateStatus(wasRunningBeforeFileChange ? "Streaming restarted" : "Streaming...", "green");
+        wasRunningBeforeFileChange = false;
     } else {
         QMessageBox::critical(this, "Error", "Failed to start ffmpeg.");
         updateStatus("Error", "red");
+        wasRunningBeforeFileChange = false;
     }
 }
 
+
+
+void MainWindow::restartStreamingIfNeeded()
+{
+    if (ffmpegProcess->state() != QProcess::Running) {
+        return;
+    }
+
+    ffmpegProcess->kill();
+    ffmpegProcess->waitForFinished();
+    ui->btn_start->setText("Start");
+    updateStatus("Restarting stream...", "darkorange");
+
+    wasRunningBeforeFileChange = true;
+    on_btn_start_clicked();
+}
 
 void MainWindow::updateStatus(const QString &text, const QString &color)
 {
